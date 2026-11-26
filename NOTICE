@@ -1,0 +1,15 @@
+Unison lyrics extension for Echo
+Copyright (C) 2026 ram22002
+
+This program is free software: you can redistribute it and/or modify it under the terms of
+the GNU General Public License as published by the Free Software Foundation, either version 3
+of the License, or (at your option) any later version. It is distributed WITHOUT ANY
+WARRANTY; see LICENSE.
+
+Behaviour was derived from public endpoint responses and from reading the third-party
+lyrics implementation of Morphe Patches
+(https://github.com/MorpheApp/morphe-patches), which is licensed GPL-3.0 with additional
+terms in its NOTICE. No Morphe source file is copied into this repository; the Echo adapter,
+data model, parsers, matching and tests are original work.
+
+Upstream service: Unison. This project is not affiliated with it.

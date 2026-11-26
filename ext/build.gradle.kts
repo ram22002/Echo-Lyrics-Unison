@@ -7,6 +7,7 @@ plugins {
 }
 
 dependencies {
+    // Echo supplies these at runtime; the plugin must not bundle them.
     compileOnly(libs.echo.common)
     compileOnly(libs.kotlin.stdlib)
 
@@ -24,8 +25,7 @@ kotlin {
     jvmToolchain(17)
 }
 
-// Extension properties goto `gradle.properties` to set values
-
+// Extension properties live in gradle.properties.
 val extType: String by project
 val extId: String by project
 val extClass: String by project
@@ -51,7 +51,6 @@ publishing {
             groupId = "dev.brahmkshatriya.echo.extension"
             artifactId = extId
             version = verName
-
             from(components["java"])
         }
     }
@@ -82,6 +81,13 @@ tasks {
                     "Extension-Update-Url" to extUpdateUrl
                 )
             )
+        }
+    }
+    test {
+        systemProperty("echo.live", System.getProperty("echo.live") ?: "0")
+        testLogging {
+            events("passed", "skipped", "failed")
+            showStandardStreams = false
         }
     }
 }

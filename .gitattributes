@@ -1,0 +1,8 @@
+# Keep shell scripts and Kotlin sources LF so CI can execute gradlew and diff cleanly.
+* text=auto eol=lf
+gradlew text eol=lf
+*.bat text eol=crlf
+*.jar binary
+*.jks binary
+*.keystore binary
+*.png binary

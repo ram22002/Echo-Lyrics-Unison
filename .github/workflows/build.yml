@@ -1,69 +1,91 @@
-name: nightly
+name: build
 
 on:
   push:
-    branches:
-      - main
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
 
 jobs:
-  build:
+  test:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
-
-      - name: Setup JDK 17
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@v4
         with:
-          distribution: 'zulu'
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: zulu
           java-version: 17
-          cache: 'gradle'
-
-      - name: Cook Variables from gradle.properties
-        run : |
-          name=$(grep '^extName=' gradle.properties | cut -d'=' -f2)
-          echo "NAME=$name Extension" >> $GITHUB_ENV
-          id=$(grep '^extId=' gradle.properties | cut -d'=' -f2)
-          echo "TAG=$id" >> $GITHUB_ENV
-
-      - name: Make Environment
+          cache: gradle
+      - name: Unit tests
         run: |
-          version=$( echo ${{ github.event.head_commit.id }} | cut -c1-7 )
-          echo "VERSION=v$version" >> $GITHUB_ENV
-          echo -e "## ${{ env.NAME }}\n${{ github.event.head_commit.message }}" > commit.txt
-          echo "APP_PATH=app/build/${{ env.TAG }}-$version.eapk" >> $GITHUB_ENV
-          echo "${{ secrets.KEYSTORE_B64 }}" | base64 -d > $GITHUB_WORKSPACE/signing-key.jks
           chmod +x ./gradlew
-
-      - name: Build with Gradle
-        run: |
-          ./gradlew assembleDebug \
-          -Pandroid.injected.signing.store.file=$GITHUB_WORKSPACE/signing-key.jks \
-          -Pandroid.injected.signing.store.password=${{ secrets.PASSWORD }} \
-          -Pandroid.injected.signing.key.alias=key0 \
-          -Pandroid.injected.signing.key.password=${{ secrets.PASSWORD }}
-          
-          cp app/build/outputs/apk/debug/app-debug.apk ${{ env.APP_PATH }}
-
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+          ./gradlew :ext:test --stacktrace
+      - name: Plugin jar
+        run: ./gradlew :ext:shadowJar --stacktrace
+      - uses: actions/upload-artifact@v4
         with:
-          path: ${{ env.APP_PATH }}
+          name: echo_lyrics_unison-jar
+          path: ext/build/libs/*.jar
 
-      - name: Create Release
+  release:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: 17
+          cache: gradle
+      - name: Build eapk
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+          PASSWORD: ${{ secrets.PASSWORD }}
+        run: |
+          chmod +x ./gradlew
+          version=$(git rev-parse --short HEAD)
+          args=()
+          if [ -n "$KEYSTORE_B64" ] && [ -n "$PASSWORD" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$GITHUB_WORKSPACE/signing-key.jks"
+            # Only sign when the secrets really open alias key0; a stale secret pair must not
+            # turn the build red, and an unsigned artifact is still installable.
+            if keytool -list -keystore "$GITHUB_WORKSPACE/signing-key.jks" \
+                -storepass "$PASSWORD" -alias key0 > /dev/null 2>&1; then
+              args=(
+                -Pandroid.injected.signing.store.file="$GITHUB_WORKSPACE/signing-key.jks"
+                -Pandroid.injected.signing.store.password="$PASSWORD"
+                -Pandroid.injected.signing.key.alias=key0
+                -Pandroid.injected.signing.key.password="$PASSWORD"
+              )
+            else
+              echo "::warning::KEYSTORE_B64 and PASSWORD do not open alias key0; building an unsigned .eapk."
+              echo "--- keystore diagnostics ---"
+              stat -c 'keystore bytes: %s' "$GITHUB_WORKSPACE/signing-key.jks" || true
+              head -c 8 "$GITHUB_WORKSPACE/signing-key.jks" | od -An -tx1 || true
+              keytool -list -keystore "$GITHUB_WORKSPACE/signing-key.jks" -storepass "$PASSWORD" 2>&1 | head -12 || true
+              echo "--- end diagnostics ---"
+            fi
+          fi
+          ./gradlew :app:assembleDebug "${args[@]}"
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/app-debug.apk "dist/echo_lyrics_unison-$version.eapk"
+      - name: Publish release
+        if: hashFiles('dist/*.eapk') != ''
         uses: softprops/action-gh-release@v2
         with:
-          make_latest: true
-          tag_name: ${{ env.VERSION }}
-          body_path: commit.txt
-          name: ${{ env.VERSION }}
-          files: ${{ env.APP_PATH }}
-
-      - name: Delete Old Releases
-        uses: sgpublic/delete-release-action@master
+          tag_name: v${{ github.sha }}
+          name: Unison ${{ github.sha }}
+          files: dist/*.eapk
+          generate_release_notes: true
+      - uses: actions/upload-artifact@v4
         with:
-          release-drop: true
-          release-keep-count: 2
-          release-drop-tag: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          name: echo_lyrics_unison-eapk
+          path: dist/*.eapk
