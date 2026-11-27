@@ -1,6 +1,6 @@
 # Unison lyrics for Echo
 
-> **Status: UNSUPPORTED.** The provider needs context Echo cannot supply (a YouTube video id). The code is included for completeness and returns no candidates without that context.
+> **Status: WORKS WITH A VIDEO ID.** Unison serves timed lyrics for specific videos, so this extension needs a YouTube video id (the track id, or a `videoId` extra). Given one it returns timed or word-by-word lyrics; its catalogue is small, so many popular Western songs return no match.
 
 An independently installable [Echo](https://github.com/brahmkshatriya/echo) lyrics extension.
 One provider per repository, built on Echo's official `LyricsClient` API.
